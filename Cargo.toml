@@ -1,0 +1,2 @@
+[workspace]
+members = ["scheduler", "job-runner", "shared_lib"]

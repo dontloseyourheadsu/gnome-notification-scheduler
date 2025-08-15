@@ -1,5 +1,5 @@
 use clap::Parser;
-use shared_lib::{load_schedules, AlertSchedule};
+use shared_lib::{AlertSchedule, load_alert_schedules, save_alert_schedules};
 
 mod cli_parser_models;
 use cli_parser_models::{Cli, Commands};
@@ -14,7 +14,15 @@ fn main() {
             interval,
         } => match AlertSchedule::new(title.clone(), message.clone(), *interval) {
             Ok(schedule) => {
-                println!("Scheduled: {}", schedule);
+                if let Ok(mut schedules) = load_alert_schedules() {
+                    schedules.push(schedule);
+
+                    if let Err(e) = save_alert_schedules(&schedules) {
+                        eprintln!("Error saving schedules: {}", e);
+                    }
+                } else {
+                    println!("No existing schedules found.");
+                }
             }
             Err(e) => {
                 eprintln!("Error: {}", e);
@@ -22,8 +30,8 @@ fn main() {
         },
         Commands::List => {
             println!("Listing all scheduled alerts...");
-            if let Ok(schedules) = load_schedules() {
-                for schedule in  schedules {
+            if let Ok(schedules) = load_alert_schedules() {
+                for schedule in schedules {
                     print!("{}", schedule);
                 }
             }
