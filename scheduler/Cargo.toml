@@ -1,0 +1,8 @@
+[package]
+name = "rust-schedule-alerts"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.0", features = ["derive"] }
+shared_lib = { path = "../shared_lib" }
