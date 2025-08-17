@@ -9,6 +9,7 @@ pub const ALERT_SCHEDULES_FILE_PATH: &str = "./alert-schedules.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertSchedule {
+    pub id: u64,
     pub title: String,
     pub message: String,
     pub repeat_interval_in_seconds: u64,
@@ -37,7 +38,10 @@ impl AlertSchedule {
             return Err(ScheduleError::MessageTooLong);
         }
 
+        let id: u64 = 0;
+
         Ok(Self {
+            id, // Id will be assigned by other method
             title,
             message,
             repeat_interval_in_seconds,
@@ -49,6 +53,7 @@ impl AlertSchedule {
 pub enum ScheduleError {
     TitleTooLong,
     MessageTooLong,
+    InvalidId,
 }
 
 impl fmt::Display for ScheduleError {
@@ -56,6 +61,7 @@ impl fmt::Display for ScheduleError {
         match self {
             ScheduleError::TitleTooLong => write!(f, "Title exceeds 100 characters"),
             ScheduleError::MessageTooLong => write!(f, "Message exceeds 500 characters"),
+            ScheduleError::InvalidId => write!(f, "Invalid alert ID"),
         }
     }
 }
