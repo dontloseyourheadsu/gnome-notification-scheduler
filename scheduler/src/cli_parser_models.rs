@@ -24,6 +24,20 @@ pub enum Commands {
     },
     /// List all scheduled alerts
     List,
+    /// Update a scheduled alert
+    Update {
+        /// Alert ID to update
+        id: u64,
+        /// New alert title
+        #[arg(short, long)]
+        title: String,
+        /// New alert message
+        #[arg(short, long)]
+        message: String,
+        /// New repeat interval in seconds
+        #[arg(short, long)]
+        interval: u64,
+    },
     /// Remove a scheduled alert
     Remove {
         /// Alert ID to remove
