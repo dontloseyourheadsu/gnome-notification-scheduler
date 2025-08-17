@@ -13,8 +13,11 @@ fn main() {
             message,
             interval,
         } => match AlertSchedule::new(title.clone(), message.clone(), *interval) {
-            Ok(schedule) => {
+            Ok(mut schedule) => {
                 if let Ok(mut schedules) = load_alert_schedules() {
+                    let last_schedule_id = schedules.last().map(|s| s.id).unwrap_or(1);
+                    schedule.id = last_schedule_id + 1;
+
                     schedules.push(schedule);
 
                     if let Err(e) = save_alert_schedules(&schedules) {
@@ -36,8 +39,46 @@ fn main() {
                 }
             }
         }
+        Commands::Update {
+            id,
+            title,
+            message,
+            interval,
+        } => {
+            if let Ok(mut schedules) = load_alert_schedules() {
+                if let Some(schedule) = schedules.iter_mut().find(|s| s.id == *id) {
+                    schedule.title = title.clone();
+                    schedule.message = message.clone();
+                    schedule.repeat_interval_in_seconds = *interval;
+
+                    if let Err(e) = save_alert_schedules(&schedules) {
+                        eprintln!("Error saving schedules: {}", e);
+                    }
+                } else {
+                    eprintln!("Error: Alert ID {} does not exist.", id);
+                }
+            } else {
+                eprintln!("Error loading existing schedules.");
+            }
+        }
         Commands::Remove { id } => {
             println!("Removing alert with ID: {}", id);
+
+            if let Ok(mut schedules) = load_alert_schedules() {
+                if *id as usize >= schedules.len() {
+                    eprintln!("Error: Alert ID {} does not exist.", id);
+                    return;
+                }
+                schedules.remove(*id as usize);
+
+                if let Err(e) = save_alert_schedules(&schedules) {
+                    eprintln!("Error saving schedules: {}", e);
+                } else {
+                    println!("Alert with ID {} removed successfully.", id);
+                }
+            } else {
+                eprintln!("Error loading existing schedules.");
+            }
         }
     }
 }
