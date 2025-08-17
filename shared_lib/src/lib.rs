@@ -5,7 +5,7 @@ use std::{fmt, io::BufReader, path::PathBuf};
 
 pub const APP_NAME: &str = "Gnome Alert Scheduler";
 pub const INTERNAL_APP_NAME: &str = "gnome-alert-scheduler";
-pub const ALERT_SCHEDULES_FILE_PATH: &str = "./alert-schedules.json";
+pub const ALERT_SCHEDULES_FILE_NAME: &str = "alert-schedules.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AlertSchedule {
@@ -19,8 +19,8 @@ impl fmt::Display for AlertSchedule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} - {} (every {} seconds)",
-            self.title, self.message, self.repeat_interval_in_seconds
+            "#{:>3}  {} - {} (every {}s)",
+            self.id, self.title, self.message, self.repeat_interval_in_seconds
         )
     }
 }
@@ -37,11 +37,8 @@ impl AlertSchedule {
         if message.chars().count() > 500 {
             return Err(ScheduleError::MessageTooLong);
         }
-
-        let id: u64 = 0;
-
         Ok(Self {
-            id, // Id will be assigned by other method
+            id: 0, // Will be assigned by daemon
             title,
             message,
             repeat_interval_in_seconds,
@@ -65,38 +62,31 @@ impl fmt::Display for ScheduleError {
         }
     }
 }
-
 impl std::error::Error for ScheduleError {}
 
-/// Get the path to the data file.
+/// Path: ~/.local/share/gnome-alert-scheduler/alert-schedules.json (on Linux)
 fn data_file() -> PathBuf {
     let mut dir = dirs::data_local_dir().unwrap_or(std::env::current_dir().unwrap());
     dir.push(INTERNAL_APP_NAME);
     fs::create_dir_all(&dir).ok();
-    dir.push(ALERT_SCHEDULES_FILE_PATH);
+    dir.push(ALERT_SCHEDULES_FILE_NAME);
     dir
 }
 
-/// Save the list of scheduled alerts to a file.
+/// Save schedules atomically.
 pub fn save_alert_schedules(schedules: &[AlertSchedule]) -> std::io::Result<()> {
     let path = data_file();
     let tmp = path.with_extension("json.tmp");
-
-    // Write atomically: write to temp, flush, then rename
     let file = File::create(&tmp)?;
     let mut writer = BufWriter::new(file);
     serde_json::to_writer_pretty(&mut writer, schedules).expect("serialize");
-
-    // Ensure bytes hit by general OS
     writer.flush()?;
-    // Ensure bytes hit Unix systems.
     writer.get_ref().sync_all()?;
-
-    fs::rename(tmp, path)?; // atomic on most platforms
+    fs::rename(tmp, path)?;
     Ok(())
 }
 
-/// Load the list of scheduled alerts from a file.
+/// Load schedules (empty if missing/corrupt).
 pub fn load_alert_schedules() -> std::io::Result<Vec<AlertSchedule>> {
     let path = data_file();
     match File::open(&path) {
@@ -108,4 +98,21 @@ pub fn load_alert_schedules() -> std::io::Result<Vec<AlertSchedule>> {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(e) => Err(e),
     }
+}
+
+/// ===== Wire protocol shared by client & daemon =====
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum Request {
+    Add { title: String, message: String, interval: u64 },
+    List,
+    Update { id: u64, title: String, message: String, interval: u64 },
+    Remove { id: u64 },
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "status", content = "data")]
+pub enum Response {
+    Ok(serde_json::Value),
+    Err(String),
 }
