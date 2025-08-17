@@ -1,84 +1,68 @@
+use anyhow::{Context, Result};
 use clap::Parser;
-use shared_lib::{AlertSchedule, load_alert_schedules, save_alert_schedules};
+use futures::{SinkExt, StreamExt};
+use shared_lib::{Request, Response, AlertSchedule};
+use tokio::net::UnixStream;
+use tokio_util::codec::{Framed, LinesCodec};
 
 mod cli_parser_models;
 use cli_parser_models::{Cli, Commands};
 
-fn main() {
+const SOCKET_PATH: &str = "/tmp/gnome-alert-scheduler.sock";
+
+#[tokio::main]
+async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match &cli.command {
-        Commands::Schedule {
-            title,
-            message,
-            interval,
-        } => match AlertSchedule::new(title.clone(), message.clone(), *interval) {
-            Ok(mut schedule) => {
-                if let Ok(mut schedules) = load_alert_schedules() {
-                    let last_schedule_id = schedules.last().map(|s| s.id).unwrap_or(1);
-                    schedule.id = last_schedule_id + 1;
-
-                    schedules.push(schedule);
-
-                    if let Err(e) = save_alert_schedules(&schedules) {
-                        eprintln!("Error saving schedules: {}", e);
-                    }
-                } else {
-                    println!("No existing schedules found.");
-                }
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
-            }
-        },
-        Commands::List => {
-            println!("Listing all scheduled alerts...");
-            if let Ok(schedules) = load_alert_schedules() {
-                for schedule in schedules {
-                    print!("{}", schedule);
-                }
+    let req = match &cli.command {
+        Commands::Schedule { title, message, interval } => {
+            Request::Add { title: title.clone(), message: message.clone(), interval: *interval }
+        }
+        Commands::List => Request::List,
+        Commands::Update { id, title, message, interval } => {
+            Request::Update {
+                id: *id,
+                title: title.clone(),
+                message: message.clone(),
+                interval: *interval,
             }
         }
-        Commands::Update {
-            id,
-            title,
-            message,
-            interval,
-        } => {
-            if let Ok(mut schedules) = load_alert_schedules() {
-                if let Some(schedule) = schedules.iter_mut().find(|s| s.id == *id) {
-                    schedule.title = title.clone();
-                    schedule.message = message.clone();
-                    schedule.repeat_interval_in_seconds = *interval;
+        Commands::Remove { id } => Request::Remove { id: *id },
+    };
 
-                    if let Err(e) = save_alert_schedules(&schedules) {
-                        eprintln!("Error saving schedules: {}", e);
+    let mut framed = Framed::new(
+        UnixStream::connect(SOCKET_PATH)
+            .await
+            .with_context(|| format!("connect {}", SOCKET_PATH))?,
+        LinesCodec::new(),
+    );
+
+    framed.send(serde_json::to_string(&req)?).await?;
+    if let Some(line) = framed.next().await {
+        match line {
+            Ok(s) => match serde_json::from_str::<Response>(&s) {
+                Ok(Response::Ok(val)) => {
+                    // Pretty-print useful outputs
+                    if let Some(_arr) = val.get("schedules").and_then(|v| v.as_array()) {
+                        // Show as list using your Display impl
+                        let schedules: Vec<AlertSchedule> = serde_json::from_value(val["schedules"].clone()).unwrap_or_default();
+                        if schedules.is_empty() {
+                            println!("(no alerts)");
+                        } else {
+                            for sched in schedules {
+                                println!("{sched}");
+                            }
+                        }
+                    } else {
+                        println!("{}", serde_json::to_string_pretty(&val)?);
                     }
-                } else {
-                    eprintln!("Error: Alert ID {} does not exist.", id);
                 }
-            } else {
-                eprintln!("Error loading existing schedules.");
-            }
-        }
-        Commands::Remove { id } => {
-            println!("Removing alert with ID: {}", id);
-
-            if let Ok(mut schedules) = load_alert_schedules() {
-                if *id as usize >= schedules.len() {
-                    eprintln!("Error: Alert ID {} does not exist.", id);
-                    return;
-                }
-                schedules.remove(*id as usize);
-
-                if let Err(e) = save_alert_schedules(&schedules) {
-                    eprintln!("Error saving schedules: {}", e);
-                } else {
-                    println!("Alert with ID {} removed successfully.", id);
-                }
-            } else {
-                eprintln!("Error loading existing schedules.");
-            }
+                Ok(Response::Err(msg)) => eprintln!("Error: {msg}"),
+                Err(_) => println!("{s}"),
+            },
+            Err(e) => eprintln!("read error: {e:#}"),
         }
     }
+
+    Ok(())
 }
