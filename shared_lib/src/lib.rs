@@ -13,14 +13,19 @@ pub struct AlertSchedule {
     pub title: String,
     pub message: String,
     pub repeat_interval_in_seconds: u64,
+    pub stopped: bool,
 }
 
 impl fmt::Display for AlertSchedule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "#{:>3}  {} - {} (every {}s)",
-            self.id, self.title, self.message, self.repeat_interval_in_seconds
+            "#{:>3}  {} - {} (every {}s) [{}]",
+            self.id,
+            self.title,
+            self.message,
+            self.repeat_interval_in_seconds,
+            if self.stopped { "STOPPED" } else { "RUNNING" }
         )
     }
 }
@@ -42,6 +47,7 @@ impl AlertSchedule {
             title,
             message,
             repeat_interval_in_seconds,
+            stopped: false,
         })
     }
 }
@@ -104,10 +110,27 @@ pub fn load_alert_schedules() -> std::io::Result<Vec<AlertSchedule>> {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum Request {
-    Add { title: String, message: String, interval: u64 },
+    Add {
+        title: String,
+        message: String,
+        interval: u64,
+    },
     List,
-    Update { id: u64, title: String, message: String, interval: u64 },
-    Remove { id: u64 },
+    Update {
+        id: u64,
+        title: String,
+        message: String,
+        interval: u64,
+    },
+    Remove {
+        id: u64,
+    },
+    Stop {
+        id: u64,
+    },
+    Start {
+        id: u64,
+    },
 }
 
 #[derive(Debug, Serialize, Deserialize)]
