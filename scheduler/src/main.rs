@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use futures::{SinkExt, StreamExt};
-use shared_lib::{Request, Response, AlertSchedule};
+use shared_lib::{AlertSchedule, Request, Response};
 use tokio::net::UnixStream;
 use tokio_util::codec::{Framed, LinesCodec};
 
@@ -15,19 +15,30 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let req = match &cli.command {
-        Commands::Schedule { title, message, interval } => {
-            Request::Add { title: title.clone(), message: message.clone(), interval: *interval }
-        }
+        Commands::Schedule {
+            title,
+            message,
+            interval,
+        } => Request::Add {
+            title: title.clone(),
+            message: message.clone(),
+            interval: *interval,
+        },
         Commands::List => Request::List,
-        Commands::Update { id, title, message, interval } => {
-            Request::Update {
-                id: *id,
-                title: title.clone(),
-                message: message.clone(),
-                interval: *interval,
-            }
-        }
+        Commands::Update {
+            id,
+            title,
+            message,
+            interval,
+        } => Request::Update {
+            id: *id,
+            title: title.clone(),
+            message: message.clone(),
+            interval: *interval,
+        },
         Commands::Remove { id } => Request::Remove { id: *id },
+        Commands::Stop { id } => Request::Stop { id: *id },
+        Commands::Start { id } => Request::Start { id: *id },
     };
 
     let mut framed = Framed::new(
@@ -45,7 +56,8 @@ async fn main() -> Result<()> {
                     // Pretty-print useful outputs
                     if let Some(_arr) = val.get("schedules").and_then(|v| v.as_array()) {
                         // Show as list using your Display impl
-                        let schedules: Vec<AlertSchedule> = serde_json::from_value(val["schedules"].clone()).unwrap_or_default();
+                        let schedules: Vec<AlertSchedule> =
+                            serde_json::from_value(val["schedules"].clone()).unwrap_or_default();
                         if schedules.is_empty() {
                             println!("(no alerts)");
                         } else {
