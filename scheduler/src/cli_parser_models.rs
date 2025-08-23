@@ -43,4 +43,14 @@ pub enum Commands {
         /// Alert ID to remove
         id: u64,
     },
+    /// Stop a scheduled alert (stops execution but keeps the alert)
+    Stop {
+        /// Alert ID to stop
+        id: u64,
+    },
+    /// Start a previously stopped alert
+    Start {
+        /// Alert ID to start
+        id: u64,
+    },
 }
